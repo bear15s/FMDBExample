@@ -45,11 +45,20 @@
     stu.stu_sex = self.sexTextField.text;
     stu.stu_age = self.ageTextField.text.intValue;
     [self insertDataWithStudent:stu];
+    [self insertMutiData];
+}
+
+- (IBAction)update:(id)sender {
+    [self updateData];
 }
 
 - (IBAction)load:(id)sender {
     [self queryData];
     [self.dataTableView reloadData];
+}
+
+- (IBAction)delete:(id)sender {
+    [self deleteDataWithPrimarykey:self.idLbl.text.intValue];
 }
 
 - (void)createTalbe{
@@ -88,17 +97,52 @@
     [_myDB close];
 }
 
-
+- (void)deleteDataWithPrimarykey:(int)pKey{
+    if([_myDB open]){
+        if([self checkExistWithPrimaryKey:pKey]){
+            BOOL result = [_myDB executeUpdate:@"delete from t_student where id = ?",@(pKey)];
+            if(result){
+                NSLog(@"删除数据成功 id = %d",pKey);
+            }else{
+                NSLog(@"删除数据失败 id = %d",pKey);
+            }
+        }
+    }
+    [_myDB close];
+}
 
 - (void)updateData{
     if([_myDB open]){
-        BOOL result = [_myDB executeUpdate:@"update t_student set name = ?,age = ?,sex = ? where id = ?",self.nameTextField.text,@(self.ageTextField.text.intValue),self.sexTextField.text,@(self.idLbl.text.intValue)];
-        if(result){
-            NSLog(@"修改数据成功");
+        if([self checkExistWithPrimaryKey:self.idLbl.text.intValue]){
+            BOOL result = [_myDB executeUpdate:@"update t_student set name = ?,age = ?,sex = ? where id = ?",self.nameTextField.text,@(self.ageTextField.text.intValue),self.sexTextField.text,@(self.idLbl.text.intValue)];
+            if(result){
+                NSLog(@"修改数据成功");
+            }else{
+                NSLog(@"修改数据失败");
+            }
         }else{
-            NSLog(@"修改数据失败");
+            NSLog(@"不存在本id数据");
         }
     }
+}
+
+- (BOOL)checkExistWithPrimaryKey:(int)key{
+    BOOL result = NO;
+//    if([_myDB open]){
+        FMResultSet * resultSet = [_myDB executeQuery:@"select * from t_student where id = ?",@(key)];
+        if(resultSet){
+            while ([resultSet next]) {
+                if([resultSet intForColumn:@"id"] == key){
+                    result = YES;
+                    break;
+                }
+            }
+        }else{
+            NSLog(@"query fail");
+        }
+//    }
+//    [_myDB close];
+    return result;
 }
 
 - (void)queryData{
@@ -119,6 +163,31 @@
     }
     [_myDB close];
 }
+
+
+#pragma - mark  另外还有个重要的线程安全问题
+//FMDB是用队列以及事务来完成
+
+- (void)insertMutiData{
+    __block BOOL isSuccess = YES;
+    [_myDB open];
+    FMDatabaseQueue* dbQueue = [FMDatabaseQueue databaseQueueWithPath:_dbPath];
+    [dbQueue inTransaction:^(FMDatabase * _Nonnull db, BOOL * _Nonnull rollback) {
+        
+        // 串行队列
+        isSuccess = [db executeUpdate:@"insert into t_student(name, age, sex) values (?, ?, ?)", @"隔壁老王", @38, @"男"] && isSuccess;
+        isSuccess = [db executeUpdate:@"insert into t_student(name, age, sex) values (?, ?, ?)", @"-1", @438, @"男"] && isSuccess;
+        isSuccess = [db executeUpdate:@"insert into t_student(name, age, sex) values (?, ?, ?)", @"Rose", @18, @"女"] && isSuccess;
+
+        if(!isSuccess){
+            *rollback = YES;
+            return ;
+        }
+        
+    }];
+    [_myDB close];
+}
+
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{
     return 1;
